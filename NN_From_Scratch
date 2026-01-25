@@ -1,0 +1,190 @@
+#Neural_Network from scratch 
+##Dataset: Kaggle heart disease
+
+import os, sys, random, pathlib
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+SEED = 42
+np.random.seed(SEED)
+random.seed(SEED)
+
+try:
+    import tensorflow as tf
+    from tensorflow import keras
+    from tensorflow.keras import layers
+    tf.random.set_seed(SEED)
+except Exception as e:
+    print("TensorFlow not imported yet (this is OK until Part 3):", e)
+
+
+
+pd.set_option('display.max_columns', 100)
+
+df = pd.read_csv('/content/drive/MyDrive/Walsh Deep Learning Module/Week 1/heart.csv')  # TODO: add try/except if desired
+print(df.shape)
+df.head()
+df.tail()
+
+class TinyMLP:
+    def __init__(self, input_dim, hidden_dim, output_dim, seed=SEED, learning_rate=0.01):
+        rng = np.random.default_rng(seed)
+        self.W1 = rng.normal(0, 0.01, size=(input_dim, hidden_dim))
+        self.b1 = np.zeros((1, hidden_dim))
+        self.W2 = rng.normal(0, 0.01, size=(hidden_dim, output_dim))
+        self.b2 = np.zeros((1, output_dim))
+        self.loss_history = []
+        self.learning_rate= learning_rate
+
+    #Activation function
+    def sigmoid(self, z):
+      z = np.clip(z, -500, 500)
+      return 1 / (1 + np.exp(-z))
+
+    def sigmoid_derivative(self, a):
+      return a * (1 - a)
+
+    def forward(self, X):
+        self.z1= X @ self.W1 + self.b1
+        self.a1 = self.sigmoid (self.z1)
+        self.z2 = self.a1 @ self.W2 + self.b2
+        self.a2 = self.sigmoid(self.z2)
+        return self.a1, self.a2
+
+    @staticmethod
+    #Binary Cross Entropy loss function
+    def compute_loss(y_true, y_pred):
+        eps = 1e-15
+        y_pred = np.clip(y_pred, eps, 1 - eps)
+        return -np.mean (y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
+
+    #Backward propagation_manual
+    def backward (self, X, y_true, a1, a2):
+        m = X.shape[0]
+        #output
+        d2 = (a2 - y_true) / m
+        d2dw2 = a1.T @ d2
+        d2db2 = np.sum(d2, axis=0)
+        d1 = (d2 @ self.W2.T) * self.sigmoid_derivative(a1)
+        d1dw1 = X.T @ d1
+        d1db1 = np.sum(d1, axis=0)
+
+        #gradients
+        self.W2 -= self.learning_rate * d2dw2
+        self.b2 -= self.learning_rate * d2db2
+        self.W1 -= self.learning_rate * d1dw1
+        self.b1 -= self.learning_rate * d1db1
+
+    def train(self, X, y, epochs):
+            for epoch in range(epochs):
+                a1, a2 = self.forward(X)
+                loss = self.compute_loss(y, a2)
+                self.loss_history.append(loss)
+                self.backward(X, y, a1, a2)
+                self.learning_rate= 0.01
+                if epoch % 100 == 0:
+                  acc = self.compute_accuracy(X, y)
+                  print(f"Epoch {epoch:4d}: Loss = {loss:.4f}, Accuracy = {acc:.4f}")
+
+    def predict(self, X):
+        a1, a2 = self.forward(X)
+        return (a2 > 0.5).astype(int)
+
+    def compute_accuracy(self, X, y):
+      return np.mean(self.predict(X) == y)
+
+input_dim=X_train.shape[1]
+hidden_dim=16
+output_dim=1
+model = TinyMLP(input_dim, hidden_dim, output_dim, seed=42, learning_rate=0.001)
+
+# Convert to NumPy arrays (X_train_scaled is already NumPy, y_train needs conversion)
+X_train_np = X_train_scaled.astype(np.float32)
+y_train_np = y_train.to_numpy().reshape(-1, 1).astype(np.float32)
+
+model.train(X_train_np, y_train_np, epochs=2000)
+
+epochs=2000
+for epoch in range(epochs):
+    a1, a2 = model.forward(X_train_np)
+    loss = model.compute_loss(y_train_np, a2)
+    model.backward(X_train_np, y_train_np, a1, a2)
+    if epoch % 100 == 0:
+        print(f"epoch {epoch} | loss={loss:.4f}")
+
+plt.figure(figsize=(15, 5))
+
+# Training loss
+plt.subplot(1, 3, 1)
+plt.plot(model.loss_history)
+plt.title('Training Loss Over Time')
+plt.xlabel('Epoch')
+plt.ylabel('Binary Cross-Entropy Loss')
+plt.grid(True)
+
+val_pred  = model.predict(X_val_scaled)
+from sklearn.metrics import classification_report
+print(classification_report(y_val,val_pred))
+test_pred = model.predict(X_test_scaled)
+print(classification_report(y_test, test_pred))
+
+
+from sklearn.metrics import roc_auc_score
+
+auc = roc_auc_score(y_val, val_pred)
+print(f"The auc_roc score in validation set is = {auc:.3f} ")
+
+auc2=roc_auc_score(y_test, test_pred)
+print(f"The auc_roc score in test set is = {auc2:.3f}")
+
+#KerasImplementation 
+def build_keras_baseline(input_dim):
+    model = keras.Sequential(
+        [
+        layers.Input(shape=(input_dim,)),
+        layers.Dense(32, activation='relu', kernel_initializer='he_uniform'),
+        layers.Dense(16, activation='relu', kernel_initializer='he_uniform'),
+        layers.Dense(1, activation = 'sigmoid')
+         ])
+
+    model.compile(
+      optimizer=tf.keras.optimizers.Adam(learning_rate=0.01, clipnorm=1.0),
+      loss='binary_crossentropy',
+      metrics=['accuracy']
+    )
+    return model
+
+keras_model = build_keras_baseline(input_dim)
+print("Model Architecture:")
+keras_model.summary()
+history = keras_model.fit(X_train_scaled, y_train, validation_data=(X_val_scaled, y_val), epochs=20, batch_size=32, verbose=1)
+y_predict=keras_model.predict(X_test_scaled)
+y_predict = (y_predict > 0.5)
+yhat = keras_model.predict(X_test_scaled)
+yhat = yhat[:, 0]
+fpr, tpr, thresholds1 = roc_curve(y_test, yhat)
+
+gmeans1 = np.sqrt(tpr * (1-fpr))
+ix = np.argmax(gmeans1)
+print('Best Threshold=%f, G-Mean=%.3f' % (thresholds1[ix], gmeans1[ix]))
+
+pyplot.plot([0,1], [0,1], linestyle='--', label='No Skill')
+pyplot.plot(fpr, tpr, marker='.')
+pyplot.scatter(fpr[ix], tpr[ix], marker='o', color='black', label='Best')
+# axis labels
+pyplot.xlabel('False Positive Rate')
+pyplot.ylabel('True Positive Rate')
+pyplot.legend()
+# show the plot
+pyplot.show()
+
+h = next((v.history for v in globals().values() if getattr(v,'history',None) and
+isinstance(v.history,dict)), None) or {'accuracy':[],'val_accuracy':[]};
+plt.plot(h.get('accuracy', [])); plt.plot(h.get('val_accuracy', []));
+plt.xlabel('Epoch'); plt.ylabel('Acc'); plt.title('Accuracy'); plt.show()
+
+
+
+
